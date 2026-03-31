@@ -13,9 +13,9 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNÇÃO DE CÁLCULO CENTRALIZADA (Para evitar repetição) ---
+# --- FUNÇÃO DE CÁLCULO CENTRALIZADA ---
 def calcular_completo(sal_bruto, n_dep):
-    # INSS
+    # INSS 2026
     if sal_bruto <= 1621.00: inss = round(sal_bruto * 0.075, 2)
     elif sal_bruto <= 2902.84: inss = round((sal_bruto * 0.09) - 24.32, 2)
     elif sal_bruto <= 4354.27: inss = round((sal_bruto * 0.12) - 111.40, 2)
@@ -29,7 +29,7 @@ def calcular_completo(sal_bruto, n_dep):
     m_deducao = max(inss + d_dep, d_simp)
     base_ir = round(max(0.0, sal_bruto - m_deducao), 2)
 
-    # IRRF Tabela
+    # IRRF Tabela 2026
     if base_ir <= 2428.80: ir_b = 0.0
     elif base_ir <= 2826.65: ir_b = (base_ir * 0.075) - 182.16
     elif base_ir <= 3751.05: ir_b = (base_ir * 0.15) - 394.16
@@ -37,7 +37,7 @@ def calcular_completo(sal_bruto, n_dep):
     else: ir_b = (base_ir * 0.275) - 908.73
     ir_b = round(max(0.0, ir_b), 2)
 
-    # Redutor SECOM 2026
+    # Redutor Especial 2026
     red = 0.0
     if 5000.00 < sal_bruto <= 7350.00:
         red = round(978.62 - (0.133145 * sal_bruto), 2)
@@ -50,7 +50,6 @@ def calcular_completo(sal_bruto, n_dep):
 # --- INTERFACE ---
 st.title("📊 Planejamento Tributário 2026")
 
-# Abas do Sistema
 tab_calc, tab_grafico = st.tabs(["💵 Calculadora Personalizada", "📈 Curva de Impostos (0 a 100k)"])
 
 with st.sidebar:
@@ -58,12 +57,12 @@ with st.sidebar:
     s_bruto = st.number_input("Salário Bruto (R$):", min_value=0.0, value=5001.0, step=100.0)
     deps = st.number_input("Dependentes:", min_value=0, value=0)
 
-# EXECUÇÃO DO CÁLCULO PRINCIPAL
+# CÁLCULO PRINCIPAL
 v_inss, v_irrf, v_liquido, v_redutor, is_simp = calcular_completo(s_bruto, deps)
 v_total_imp = round(v_inss + v_irrf, 2)
 v_aliq_efet = round((v_total_imp / s_bruto) * 100, 2) if s_bruto > 0 else 0
 
-# --- CONTEÚDO DA ABA 1 ---
+# --- ABA 1: CALCULADORA ---
 with tab_calc:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Líquido Mensal", f"R$ {v_liquido:,.2f}")
@@ -89,33 +88,31 @@ with tab_calc:
                                 "Valor": [s_bruto, v_inss, v_irrf, v_liquido]})
         st.table(res_df.set_index("Descrição"))
 
-# --- CONTEÚDO DA ABA 2 ---
+# --- ABA 2: GRÁFICO DE SENSIBILIDADE ---
 with tab_grafico:
     st.subheader("Evolução da Carga Tributária")
-    st.write("Veja como o INSS e o IRRF se comportam conforme seu salário aumenta.")
-
-    # Gerar dados para o gráfico (0 a 100k)
-    faixas = np.linspace(0, 100000, 200)
-    dados_curva = [calcular_completo(f, deps) for f in faixas]
     
-    df_curva = pd.DataFrame(dados_curva, columns=['INSS', 'IRRF', 'Líquido', 'Redutor', 'IsSimp'])
+    # Gerar dados (0 a 100k)
+    faixas = np.linspace(0, 100000, 200)
+    dados_list = [calcular_completo(f, deps) for f in faixas]
+    
+    df_curva = pd.DataFrame(dados_list, columns=['INSS', 'IRRF', 'Liquido', 'Redutor', 'IsSimp'])
     df_curva['Bruto'] = faixas
 
-    # Gráfico de Áreas Empilhadas
+    # Criar gráfico de áreas empilhadas
     fig_curva = go.Figure()
-    fig_curva.add_trace(go.Scatter(x=df_curva['Bruto'], y=df_curva['Líquido'], name='Salário Líquido', 
-                         mode='lines', stackgroup='one', line=dict(color='#2ecc71')))
-    fig_curva.add_trace(go.Scatter(x=df_curva['Bruto'], y=df_curva['INSS'], name='INSS', 
-                         mode='lines', stackgroup='one', line=dict(color='#e74c3c')))
-    fig_curva.add_trace(go.Scatter(x=df_curva['Bruto'], y=df_curva['IRRF'], name='IRRF', 
-                         mode='lines', stackgroup='one', line=dict(color='#f1c40f')))
+    
+    # Ordem das camadas: Líquido na base, depois impostos
+    fig_curva.add_trace(go.Scatter(x=df_curva['Bruto'], y=df_curva['Liquido'], name='Líquido', stackgroup='one', line=dict(color='#2ecc71')))
+    fig_curva.add_trace(go.Scatter(x=df_curva['Bruto'], y=df_curva['INSS'], name='INSS', stackgroup='one', line=dict(color='#e74c3c')))
+    fig_curva.add_trace(go.Scatter(x=df_curva['Bruto'], y=df_curva['IRRF'], name='IRRF', stackgroup='one', line=dict(color='#f1c40f')))
 
     fig_curva.update_layout(
         xaxis_title="Salário Bruto (R$)",
         yaxis_title="Composição (R$)",
-        hovermode="x unicode",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        hovermode="x",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
     )
-    st.plotly_chart(fig_curva, use_container_width=True)
     
-    st.warning("⚠️ Observe que o IRRF cresce exponencialmente em salários mais altos, enquanto o INSS estabiliza após o teto.")
+    st.plotly_chart(fig_curva, use_container_width=True)
+    st.info("A curva mostra como o IRRF se torna o principal componente de custo em rendas elevadas.")
